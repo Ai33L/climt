@@ -190,7 +190,8 @@ class GFSDynamicalCore(TendencyStepper):
         self._damping_levels = number_of_damped_levels
         self._tau_damping = damping_timescale
         self._zero_negative_moisture = zero_negative_moisture
-
+        self._gfs_cython = _gfs_dynamics
+        
         self.initialized = False
 
         self.input_properties = self._gfs_input_properties.copy()
