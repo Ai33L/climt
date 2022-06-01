@@ -21,7 +21,6 @@ except ImportError as error:
 class GFSError(Exception):
     pass
 
-
 def get_valid_properties(gfs_properties, prognostic_properties, property_type):
     return_dict = {}
     for name, properties in prognostic_properties.items():
@@ -274,6 +273,8 @@ class GFSDynamicalCore(TendencyStepper):
         self._hash_tracers = 1000
 
         self.initialized = True
+        
+        self.Flag = False
 
     def __call__(self, state, timestep):
         """
@@ -302,7 +303,10 @@ class GFSDynamicalCore(TendencyStepper):
         KeyError
             If a required quantity is missing from the state.
         InvalidStateError
-            If state is not a value input for the Stepper instance
+            If state is not a value inperties(state, self.input_properties)
+        if self.uses_tracers:
+            raw_state['tracers'] = self._tracer_packer.pack(state)
+        raw_state['time'] = state['time']put for the Stepper instance
             for other reasons.
         """
         self._check_self_is_initialized()
@@ -545,31 +549,37 @@ class GFSDynamicalCore(TendencyStepper):
         been modified since they were last returned, and if they have will
         update the specctral counterpart to reflect the new state array.
         """
-        u_hash = get_hash(state['eastward_wind'])
-        v_hash = get_hash(state['northward_wind'])
-        if (u_hash != self._hash_u or v_hash != self._hash_v):
-            _gfs_dynamics.vrt_div_to_spectral()
-            self._hash_u = u_hash
-            self._hash_v = v_hash
-        T_hash = get_hash(state['air_temperature'])
-        if T_hash != self._hash_temperature:
-            _gfs_dynamics.virtemp_to_spectral()
-            self._hash_temperature = T_hash
-        tracer_hash = get_hash(state['tracers'])
-        if tracer_hash != self._hash_tracers:
-            _gfs_dynamics.tracer_to_spectral()
-            self._hash_tracers = tracer_hash
-        p_surf_hash = get_hash(state['surface_air_pressure'])
-        if p_surf_hash != self._hash_surface_pressure:
-            _gfs_dynamics.lnps_to_spectral()
-            self._hash_surface_pressure = p_surf_hash
+        if self.Flag:
+            u_hash = get_hash(state['eastward_wind'])
+            v_hash = get_hash(state['northward_wind'])
+            if (u_hash != self._hash_u or v_hash != self._hash_v):
+                _gfs_dynamics.vrt_div_to_spectral()
+            	self._hash_u = u_hash
+            	self._hash_v = v_hash
+            T_hash = get_hash(state['air_temperature'])
+            if T_hash != self._hash_temperature:
+            	_gfs_dynamics.virtemp_to_spectral()
+            	self._hash_temperatureperties(state, self.input_properties)
+        if self.uses_tracers:
+            raw_state['tracers'] = self._tracer_packer.pack(state)
+        raw_state['time'] = state['time'] = T_hash
+            tracer_hash = get_hash(state['tracers'])
+            if tracer_hash != self._hash_tracers:
+            	_gfs_dynamics.tracer_to_spectral()
+                self._hash_tracers = tracer_hash
+            p_surf_hash = get_hash(state['surface_air_pressure'])
+            if p_surf_hash != self._hash_surface_pressure:
+            	_gfs_dynamics.lnps_to_spectral()
+                self._hash_surface_pressure = p_surf_hash
 
     def __del__(self):
         """ call shutdown in fortran code """
         logging.info("Cleaning up dynamical core...")
         _gfs_dynamics.shut_down_model()
         logging.info("Done!")
-
+        
+    def set_flag(self, b):
+    	self.Flag = b
 
 def get_hash(array):
     if sys.version_info > (3, 0):
