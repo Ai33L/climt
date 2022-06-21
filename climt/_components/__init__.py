@@ -13,10 +13,11 @@ from .instellation import Instellation
 from .dry_convection import DryConvectiveAdjustment
 from .bucket_hydrology import BucketHydrology
 from .simple_boundary_layer import SimpleBoundaryLayer
+from .simple_flux import SimpleFlux
 
 __all__ = (
     Frierson06LongwaveOpticalDepth, GrayLongwaveRadiation,
     HeldSuarez, GridScaleCondensation, BergerSolarInsolation, SimplePhysics,
     RRTMGLongwave, RRTMGShortwave, EmanuelConvection, SlabSurface,
     GFSDynamicalCore, DcmipInitialConditions, IceSheet,
-    Instellation, DryConvectiveAdjustment, BucketHydrology, SimpleBoundaryLayer)
+    Instellation, DryConvectiveAdjustment, BucketHydrology, SimpleBoundaryLayer, SimpleFlux)
