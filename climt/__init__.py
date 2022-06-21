@@ -13,7 +13,7 @@ from ._components import (
     RRTMGShortwave,
     EmanuelConvection, SlabSurface, GFSDynamicalCore,
     DcmipInitialConditions, IceSheet, Instellation, DryConvectiveAdjustment,
-    BucketHydrology, SimpleBoundaryLayer)
+    BucketHydrology, SimpleBoundaryLayer, SimpleFlux)
 
 
 sympl.set_constant('top_of_model_pressure', 20., 'Pa')
@@ -28,6 +28,6 @@ __all__ = (
     RRTMGShortwave,
     EmanuelConvection, SlabSurface, GFSDynamicalCore, DcmipInitialConditions,
     IceSheet, Instellation, DryConvectiveAdjustment, BucketHydrology,
-    SimpleBoundaryLayer)
+    SimpleBoundaryLayer, SimpleFlux)
 
 __version__ = '0.16.14'
