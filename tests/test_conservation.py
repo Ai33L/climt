@@ -281,8 +281,9 @@ class TestSimpleBoundaryLayerConservation(AtmosphereMoistEnthalpyConservation):
     def modify_state(self, state):
         state['eastward_wind'].values[:] = 3.
         unstable_level = 5
-        state['air_temperature'][:unstable_level] += 10
-        state['specific_humidity'][:unstable_level] = 0.05
+        state['air_temperature'][:unstable_level] = 10
+        state['air_temperature'][0] = 100
+        state['specific_humidity'][:unstable_level] = 0.01
         return state
 
 
