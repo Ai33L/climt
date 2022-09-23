@@ -5,7 +5,7 @@ from numba import jit
 from ..._core import bolton_q_sat
 
 
-@jit
+@jit(nopython=True)
 def calculate_fields_flux(air_temp, air_press, air_press_int, surf_temp, surf_press, spec_hum, north_wind, east_wind, Rd, Rh2o, Cp_dry, g,
                          P0, k, z0, Ri_c, surf_hum, scaling):
 
@@ -36,7 +36,7 @@ def calculate_fields_flux(air_temp, air_press, air_press_int, surf_temp, surf_pr
     return pot_temp_a, pot_temp_surf, wind_a, rho_a, layer_thickness, Ri_a, C
 
 
-@jit
+@jit(nopython=True)
 def flux(air_temp,spec_hum, north_wind, east_wind, sat_spec_hum, rho, pot_temp, pot_temp_surf,
         wind, layer_thickness, Cp_dry, L, timestep, north_stress, east_stress, sens_flux, lat_flux, C):
     
@@ -58,18 +58,6 @@ def flux(air_temp,spec_hum, north_wind, east_wind, sat_spec_hum, rho, pot_temp, 
 
 
 @jit
-def K_b(Ri_a, u_fric, C, z, k, Ri_c, z0):
-
-    K=np.zeros(Ri_a.shape)
-    mask2= Ri_a <= 0
-    K[mask2] = (k*u_fric[mask2]*np.sqrt(C[mask2])*z[mask2])
-    mask2=np.logical_and(Ri_a>0, Ri_a < Ri_c)
-    K[mask2] = (k*u_fric[mask2]*np.sqrt(C[mask2])*z[mask2]/(1+Ri_a[mask2]/Ri_c*np.log(z[mask2]/z0)/(1-Ri_a[mask2]/Ri_c)))
-
-    return K
-
-
-# @jit(nopython=True)
 def calculate_fields_boundary(air_temp,spec_hum,north_wind, east_wind, air_press_int, surf_temp, surf_press,
                             sat_spec_hum, Rd, P0, Cp_dry, g, fb, Ri_a, C, k, Ri_c, z0, h):
 
@@ -89,21 +77,14 @@ def calculate_fields_boundary(air_temp,spec_hum,north_wind, east_wind, air_press
     wind_int = np.sqrt(np.power(north_wind_int, 2) +
                            np.power(east_wind_int, 2))
     
-    wind_int[np.where(wind_int<1)]=1
+    # wind_int[np.where(wind_int<1)]=1
 
     pot_virt_temp = air_temp_int *(1+0.608*spec_hum_int)*\
         np.power((P0/air_press_int[1:-1]), Rd/Cp_dry) 
     pot_virt_temp_surf = surf_temp *(1+0.608*sat_spec_hum)*\
         np.power((P0/surf_press), Rd/Cp_dry) 
 
-    z_int = np.zeros((n,col))
-    z_int[0][:] = (Rd*(1+0.608*spec_hum_int[0])*air_temp_int[0] /
-                g) * np.log(surf_press/air_press_int[1:-1][0])
-    for i in range(1, n):
-        z_int[i][:] = z_int[i-1]+(Rd*(1+0.608*spec_hum_int[i]) *
-                    air_temp_int[i]/g) *\
-                    np.log(air_press_int[1:-1][i-1] /
-                    air_press_int[1:-1][i])
+    z_int = np.cumsum(Rd*(1+0.608*spec_hum_int) *air_temp_int/g *np.log(air_press_int[:-2]/air_press_int[1:-1]), axis=0)
 
     h[:]=z_int[0]
     Rich = g*z_int*(pot_virt_temp-pot_virt_temp_surf)/(pot_virt_temp_surf*wind_int*wind_int)
@@ -115,19 +96,27 @@ def calculate_fields_boundary(air_temp,spec_hum,north_wind, east_wind, air_press
 
     diff = np.zeros((n,col))
 
-    for i in range(n):
+    h_cast = np.broadcast_to(h,(n,col))
+    Ria_cast = np.broadcast_to(Ri_a,(n,col))
+    C_cast = np.broadcast_to(C,(n,col))
+    wind_a_cast = np.broadcast_to(wind_int[0],(n,col))
 
-        mask = z_int[i]<fb*h
-        diff[i,mask] =  K_b(Ri_a[mask],wind_int[0][mask],C[mask], z_int[i][mask], k, Ri_c, z0)
+    mask = z_int<fb*h_cast
+    mask_add = Ria_cast>0
+    mask2 = np.logical_and(mask, mask_add) 
+    diff[mask] =  k*wind_a_cast[mask]*np.sqrt(C_cast[mask])*z_int[mask]
+    diff[mask2] = diff[mask2]/(1+Ria_cast[mask2]/Ri_c*np.log(z_int[mask2]/z0)/(1-Ria_cast[mask2]/Ri_c))
 
-        mask=np.logical_and(z_int[i]>=fb*h,z_int[i]<h)
-        diff[i,mask] = (K_b(Ri_a[mask],wind_int[0][mask],C[mask], fb*h[mask], k, Ri_c, z0)*(z_int[i][mask]/(h[mask]*fb) *\
-            np.power((1-(z_int[i][mask]-fb*h[mask])/((1-fb)*h[mask])), 2)))
+    mask=np.logical_and(z_int>=fb*h_cast,z_int<h_cast)
+    diff[mask] = k*wind_a_cast[mask]*np.sqrt(C_cast[mask])*fb*h_cast[mask]*(z_int[mask]/(fb*h_cast[mask]) *\
+        np.power((1-(z_int[mask]-fb*h_cast[mask])/((1-fb)*h_cast[mask])), 2))
+    mask2 = np.logical_and(mask, mask_add) 
+    diff[mask2] = diff[mask2]/(1+Ria_cast[mask2]/Ri_c*np.log(fb*h_cast[mask2]/z0)/(1-Ria_cast[mask2]/Ri_c))
 
     return rho, diff  
 
 
-@jit
+@jit(nopython=True)
 def TDMAsolver(a, b, c, d):
         
         n, m = np.shape(d)[0], np.shape(d)[1]
@@ -149,7 +138,7 @@ def TDMAsolver(a, b, c, d):
         return p
 
 
-@jit
+@jit(nopython=True)
 def boundary(air_temp, spec_hum,north_wind, east_wind, air_press, air_press_int, rho, diff, g, P0, Rd, Cp, timestep):
 
     n, col = air_temp.shape[0], air_temp.shape[1]
@@ -338,14 +327,13 @@ class SimpleBoundaryLayer(Stepper):
         rho, diff = \
         calculate_fields_boundary(state["air_temperature"],state['specific_humidity'],state['northward_wind'], state['eastward_wind'],
                                 state['air_pressure_on_interface_levels'],state['surface_temperature'], state['surface_air_pressure'],
-                                diagnostics['surface_specific_humidity'], self._Rd, self._P0, self._Cp, self._g, self._fb, Ri_a, C, self._k, self._Ric, self._z0,
-                                diagnostics['boundary_layer_height'])
+                                diagnostics['surface_specific_humidity'], self._Rd, self._P0, self._Cp, self._g, self._fb, Ri_a, C,
+                                self._k, self._Ric, self._z0, diagnostics['boundary_layer_height'])
 
         flux(new_state['air_temperature'],new_state['specific_humidity'],new_state['northward_wind'], new_state['eastward_wind'],
-            diagnostics['surface_specific_humidity'], rho_a, pot_temp_a, pot_temp_surf,
-            wind_a, layer_thickness, self._Cp, self._L, timestep.total_seconds(),
-            diagnostics['northward_wind_stress'], diagnostics['eastward_wind_stress'],diagnostics['surface_upward_sensible_heat_flux'],
-            diagnostics['surface_upward_latent_heat_flux'], C)
+            diagnostics['surface_specific_humidity'], rho_a, pot_temp_a, pot_temp_surf, wind_a, layer_thickness, self._Cp, self._L,
+            timestep.total_seconds(),diagnostics['northward_wind_stress'], diagnostics['eastward_wind_stress'],
+            diagnostics['surface_upward_sensible_heat_flux'], diagnostics['surface_upward_latent_heat_flux'], C)
 
         boundary(new_state['air_temperature'],new_state['specific_humidity'],new_state['northward_wind'], new_state['eastward_wind'],
                 state['air_pressure'], state['air_pressure_on_interface_levels'], rho, diff, self._g, self._P0, self._Rd, self._Cp,
