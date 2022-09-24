@@ -1,7 +1,7 @@
 from sympl import initialize_numpy_arrays_with_properties, get_constant
 from sympl import Stepper
 import numpy as np
-from numba import jit
+from sympl import jit
 from ..._core import bolton_q_sat
 
 
@@ -77,7 +77,7 @@ def calculate_fields_boundary(air_temp,spec_hum,north_wind, east_wind, air_press
     wind_int = np.sqrt(np.power(north_wind_int, 2) +
                            np.power(east_wind_int, 2))
     
-    # wind_int[np.where(wind_int<1)]=1
+    np.where(wind_int>1, wind_int, 1)
 
     pot_virt_temp = air_temp_int *(1+0.608*spec_hum_int)*\
         np.power((P0/air_press_int[1:-1]), Rd/Cp_dry) 
@@ -86,13 +86,9 @@ def calculate_fields_boundary(air_temp,spec_hum,north_wind, east_wind, air_press
 
     z_int = np.cumsum(Rd*(1+0.608*spec_hum_int) *air_temp_int/g *np.log(air_press_int[:-2]/air_press_int[1:-1]), axis=0)
 
-    h[:]=z_int[0]
     Rich = g*z_int*(pot_virt_temp-pot_virt_temp_surf)/(pot_virt_temp_surf*wind_int*wind_int)
 
-    for i in range(n-1,-1,-1):
-    # for i in range(1,n):
-        mask=Rich[i] > Ri_c
-        h[mask] = z_int[i, mask]
+    h[:] = z_int[(np.argmax(Rich > Ri_c, axis=0),range(col))]
 
     diff = np.zeros((n,col))
 
