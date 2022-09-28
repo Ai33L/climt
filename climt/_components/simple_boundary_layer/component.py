@@ -1,11 +1,11 @@
 from sympl import initialize_numpy_arrays_with_properties, get_constant
 from sympl import Stepper
 import numpy as np
-from sympl import jit
+from numba import jit
 from ..._core import bolton_q_sat
 
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def calculate_fields_flux(air_temp, air_press, air_press_int, surf_temp, surf_press, spec_hum, north_wind, east_wind, Rd, Rh2o, Cp_dry, g,
                          P0, k, z0, Ri_c, surf_hum, scaling):
 
@@ -36,7 +36,7 @@ def calculate_fields_flux(air_temp, air_press, air_press_int, surf_temp, surf_pr
     return pot_temp_a, pot_temp_surf, wind_a, rho_a, layer_thickness, Ri_a, C
 
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def flux(air_temp,spec_hum, north_wind, east_wind, sat_spec_hum, rho, pot_temp, pot_temp_surf,
         wind, layer_thickness, Cp_dry, L, timestep, north_stress, east_stress, sens_flux, lat_flux, C):
     
@@ -57,7 +57,7 @@ def flux(air_temp,spec_hum, north_wind, east_wind, sat_spec_hum, rho, pot_temp, 
             / (layer_thickness) * timestep
 
 
-@jit
+# @jit
 def calculate_fields_boundary(air_temp,spec_hum,north_wind, east_wind, air_press_int, surf_temp, surf_press,
                             sat_spec_hum, Rd, P0, Cp_dry, g, fb, Ri_a, C, k, Ri_c, z0, h):
 
@@ -77,7 +77,7 @@ def calculate_fields_boundary(air_temp,spec_hum,north_wind, east_wind, air_press
     wind_int = np.sqrt(np.power(north_wind_int, 2) +
                            np.power(east_wind_int, 2))
     
-    np.where(wind_int>1, wind_int, 1)
+    wind_int[np.where(wind_int<1)]=1
 
     pot_virt_temp = air_temp_int *(1+0.608*spec_hum_int)*\
         np.power((P0/air_press_int[1:-1]), Rd/Cp_dry) 
@@ -112,7 +112,7 @@ def calculate_fields_boundary(air_temp,spec_hum,north_wind, east_wind, air_press
     return rho, diff  
 
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def TDMAsolver(a, b, c, d):
         
         n, m = np.shape(d)[0], np.shape(d)[1]
@@ -134,7 +134,7 @@ def TDMAsolver(a, b, c, d):
         return p
 
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def boundary(air_temp, spec_hum,north_wind, east_wind, air_press, air_press_int, rho, diff, g, P0, Rd, Cp, timestep):
 
     n, col = air_temp.shape[0], air_temp.shape[1]

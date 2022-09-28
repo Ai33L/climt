@@ -193,7 +193,7 @@ class GFSDynamicalCore(TendencyStepper):
         self._gfs_cython = _gfs_dynamics
         
         self.initialized = False
-        self.Flag = False
+        self.Flag = True
 
         self.input_properties = self._gfs_input_properties.copy()
         self.output_properties = self._gfs_output_properties.copy()

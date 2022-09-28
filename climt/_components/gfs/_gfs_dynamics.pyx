@@ -462,11 +462,9 @@ def reconvert(A,B):
        
 def reinit_spectral_arrays(data):
 
-    global pyTracerSpec, pyTracerSpecTend, pyTopoSpec, \
-            pyLnPsSpec, pyLnPsSpecTend,\
+    global pyTracerSpec, pyTopoSpec, pyLnPsSpec,\
             pyDissSpec, pyDmpProf, pyDiffProf,\
-            pyVrtSpec, pyVrtSpecTend, pyDivSpec, pyDivSpecTend,\
-            pyVirtTempSpec, pyVirtTempSpecTend
+            pyVrtSpec, pyDivSpec, pyVirtTempSpec
     
     reconvert(pyVirtTempSpec,data[0])
     reconvert(pyDivSpec,data[1])

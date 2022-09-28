@@ -1,6 +1,7 @@
 from math import sqrt
 from sympl import Stepper
 from sympl import initialize_numpy_arrays_with_properties
+import numpy as np
 
 class BucketHydrology(Stepper):
     """
@@ -102,8 +103,13 @@ class BucketHydrology(Stepper):
     }
 
     output_properties = {
-        'surface_temperature': {'units': 'degK'},
-        'lwe_thickness_of_soil_moisture_content': {'units': 'm'},
+        'surface_temperature': {
+            'dims': ['*'],
+            'units': 'degK',
+        },
+        'lwe_thickness_of_soil_moisture_content': {
+            'dims': ['*'],
+            'units': 'm'},
     }
 
     def __init__(self, soil_moisture_max=0.15, beta_parameter=0.75,
@@ -132,76 +138,62 @@ class BucketHydrology(Stepper):
         '''
         
         beta_factor = 0
-        num_cols = state['air_temperature'].shape[1]
 
         new_state = initialize_numpy_arrays_with_properties(
             self.output_properties, state, self.input_properties
         )
-        
-        new_state['surface_temperature'][:]=state['surface_temperature']
-        new_state['lwe_thickness_of_soil_moisture_content'][:]=state['lwe_thickness_of_soil_moisture_content']
 
         diagnostics = initialize_numpy_arrays_with_properties(
             self.diagnostic_properties, state, self.input_properties
         )
+
+
+        north_wind_speed = state['northward_wind'][0]
+        east_wind_speed = state['eastward_wind'][0]
+
+        wind_speed = np.sqrt(np.power(north_wind_speed, 2) +
+                            np.power(east_wind_speed, 2))
+
+        potential_evaporation = self._c * wind_speed * (state['surface_specific_humidity'] - state['specific_humidity'][0])
+
+        precipitation_rate = state['convective_precipitation_rate'] + state['stratiform_precipitation_rate']
+        diagnostics['precipitation_rate']=precipitation_rate
+
+        soil_moisture = state['lwe_thickness_of_soil_moisture_content']
+
+        beta_factor = np.ones(soil_moisture.shape)
+
+        mask = soil_moisture <= self._g * self._smax
+        beta_factor[mask] = soil_moisture[mask]/(self._g*self._smax)
+
+        evaporation_rate = beta_factor * potential_evaporation
+        diagnostics['evaporation_rate']=evaporation_rate
+
+        soil_moisture_tendency = np.zeros(soil_moisture.shape)
+        mask = np.logical_or(soil_moisture < self._smax, precipitation_rate <= evaporation_rate)
+        soil_moisture_tendency[mask] = precipitation_rate[mask] - evaporation_rate[mask]
+
+        surface_upward_latent_heat_flux = self._l * evaporation_rate
+        surface_upward_sensible_heat_flux = self._c * wind_speed * (state['surface_temperature'] - state['air_temperature'][0])
+        diagnostics['surface_upward_sensible_heat_flux']=surface_upward_sensible_heat_flux
+        diagnostics['surface_upward_latent_heat_flux']=surface_upward_latent_heat_flux
         
-        for col in range(num_cols):
+        net_heat_flux = (
+                        state['downwelling_shortwave_flux_in_air'][:,0] +
+                        state['downwelling_longwave_flux_in_air'][:,0] -
+                        state['upwelling_shortwave_flux_in_air'][:,0] -
+                        state['upwelling_longwave_flux_in_air'][:,0] -
+                        surface_upward_sensible_heat_flux -
+                        surface_upward_latent_heat_flux
+                        )
 
-            area_type=state['area_type'][col].astype(str)
+        mass_surface_slab = state['surface_material_density'] * \
+                    state['soil_layer_thickness']
+        heat_capacity_surface = mass_surface_slab * state['heat_capacity_of_soil']
 
-            if area_type == 'land':
-
-                north_wind_speed = state['northward_wind'][0][col]
-                east_wind_speed = state['eastward_wind'][0][col]
-
-                wind_speed = sqrt(pow(north_wind_speed, 2) +
-                                  pow(east_wind_speed, 2))
-
-                potential_evaporation = self._c * wind_speed * (state['surface_specific_humidity'][col] - state['specific_humidity'][0][col])
-
-                precipitation_rate = state['convective_precipitation_rate'][col] + state['stratiform_precipitation_rate'][col]
-                diagnostics['precipitation_rate'][col]=precipitation_rate
-
-                soil_moisture = state['lwe_thickness_of_soil_moisture_content'][col]
-
-                soil_moisture_tendency = 0
-
-                if soil_moisture >= self._g * self._smax:
-                    beta_factor = 1
-                else:
-                    beta_factor = soil_moisture/(self._g*self._smax)
-
-                evaporation_rate = beta_factor * potential_evaporation
-                diagnostics['evaporation_rate'][col]=evaporation_rate
-
-                if soil_moisture < self._smax or precipitation_rate <= evaporation_rate:
-                    soil_moisture_tendency = precipitation_rate - evaporation_rate
-                else:
-                    soil_moisture_tendency = 0
-
-                surface_upward_latent_heat_flux = self._l * evaporation_rate
-                surface_upward_sensible_heat_flux = self._c * wind_speed * (state['surface_temperature'][col] - state['air_temperature'][0][col])
-                diagnostics['surface_upward_sensible_heat_flux'][col]=surface_upward_sensible_heat_flux
-                diagnostics['surface_upward_latent_heat_flux'][col]=surface_upward_latent_heat_flux
-
-                net_heat_flux = (
-                    state['downwelling_shortwave_flux_in_air'][col, 0] +
-                    state['downwelling_longwave_flux_in_air'][col, 0] -
-                    state['upwelling_shortwave_flux_in_air'][col, 0] -
-                    state['upwelling_longwave_flux_in_air'][col, 0] -
-                    surface_upward_sensible_heat_flux -
-                    surface_upward_latent_heat_flux
-                )
-
-                mass_surface_slab = state['surface_material_density'][col] * \
-                    state['soil_layer_thickness'][col]
-                heat_capacity_surface = mass_surface_slab * state['heat_capacity_of_soil'][col]
-
-                new_state['surface_temperature'][col] = state['surface_temperature'][col] + \
+        new_state['surface_temperature'] = state['surface_temperature'] + \
                     (net_heat_flux/heat_capacity_surface * timestep.total_seconds())
-                new_state['lwe_thickness_of_soil_moisture_content'][col] = min(state['lwe_thickness_of_soil_moisture_content'][col] + \
+        new_state['lwe_thickness_of_soil_moisture_content'] = np.minimum(state['lwe_thickness_of_soil_moisture_content'] + \
                     (soil_moisture_tendency * timestep.total_seconds()), 0.15)
-        
-        new_state['surface_temperature'][:]=state['surface_temperature']
         
         return diagnostics, new_state
