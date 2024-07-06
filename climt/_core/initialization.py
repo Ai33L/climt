@@ -7,7 +7,7 @@ import numpy as np
 from datetime import datetime
 from scipy.interpolate import CubicSpline
 import pkg_resources
-
+import copy
 
 def get_atmosphere_grid(grid_state,
                         interface=False,
@@ -768,28 +768,28 @@ def aggregate_input_properties(component_list):
     return combine_component_properties(component_list, 'input_properties')
 
 
-def get_init_diagnostic(name, grid_state):
+def get_init_diagnostic(name, grid_state, default_values_copy):
     """
     Takes in a quantity name. Returns a DiagnosticComponent object which calculates that
     quantity from a grid state.
     """
     # First, check if the quantity is in the default_values dict, and return
     # a constructed ConstantDefaultValue DiagnosticComponent if it is.
-    if name in default_values:
+    if name in default_values_copy:
         return ConstantDefaultValue(
             name,
-            default_values[name]['value'],
-            default_values[name]['units'],
-            dtype=default_values[name].get('dtype', None),
-            domain=default_values[name]['domain'],
+            default_values_copy[name]['value'],
+            default_values_copy[name]['units'],
+            dtype=default_values_copy[name].get('dtype', None),
+            domain=default_values_copy[name]['domain'],
         )
-    elif name[-20:] == '_on_interface_levels' and name[:-20] in default_values:
+    elif name[-20:] == '_on_interface_levels' and name[:-20] in default_values_copy:
         return ConstantDefaultValue(
             name,
-            default_values[name[:-20]]['value'],
-            default_values[name[:-20]]['units'],
-            dtype=default_values[name[:-20]].get('dtype', None),
-            domain=default_values[name[:-20]]['domain'] + '_interface',
+            default_values_copy[name[:-20]]['value'],
+            default_values_copy[name[:-20]]['units'],
+            dtype=default_values_copy[name[:-20]].get('dtype', None),
+            domain=default_values_copy[name[:-20]]['domain'] + '_interface',
         )
     # If it isn't, check if there is a diagnostic defined in some library of DiagnosticComponent
     # classes (probably a list stored here) that can calculate the quantity,
@@ -802,11 +802,11 @@ def get_init_diagnostic(name, grid_state):
     raise NotImplementedError('No initialization method for quantity name {}'.format(name))
 
 
-def get_diagnostics_for(input_properties, grid_state):
+def get_diagnostics_for(input_properties, grid_state, default_values_copy):
     diagnostic_list = []
     for name in input_properties.keys():
         if name not in grid_state.keys():
-            diagnostic_list.append(get_init_diagnostic(name, grid_state))
+            diagnostic_list.append(get_init_diagnostic(name, grid_state, default_values_copy))
     return diagnostic_list
 
 
@@ -834,10 +834,14 @@ def get_default_state(
     Returns:
         default_state (dict): A reasonable initial state.
     """
+    default_values_copy=copy.deepcopy(default_values)
+    for comp in component_list:
+        if hasattr(comp, 'extra_init_properties'):
+            default_values_copy.update(comp.extra_init_properties)
     grid_state = grid_state or get_grid(
         n_ice_interface_levels=n_ice_interface_levels)
     input_properties = aggregate_input_properties(component_list)
-    diagnostic_list = get_diagnostics_for(input_properties, grid_state)
+    diagnostic_list = get_diagnostics_for(input_properties, grid_state, default_values_copy)
     return_state = {}
     return_state.update(grid_state)
     return_state.update(compute_all_diagnostics(grid_state, diagnostic_list))
